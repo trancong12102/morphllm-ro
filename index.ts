@@ -6,6 +6,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
+  ListRootsRequestSchema,
+  RootsListChangedNotificationSchema,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 
@@ -16,7 +18,10 @@ const upstreamTransport = new StdioClientTransport({
   command: "bunx",
   args: ["-y", "@morphllm/morphmcp"],
 });
-const client = new Client({ name: "morphllm-ro-client", version: "1.0.0" });
+const client = new Client(
+  { name: "morphllm-ro-client", version: "1.0.0" },
+  { capabilities: { roots: { listChanged: true } } }
+);
 
 // Proxy server → exposed via stdio to MCP host
 const server = new Server(
@@ -52,6 +57,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
   return client.callTool({ name, arguments: args });
 });
+
+// Forward roots/list from morphmcp → MCP host
+client.setRequestHandler(ListRootsRequestSchema, () => server.listRoots());
+
+// Forward roots_changed from MCP host → morphmcp
+server.setNotificationHandler(RootsListChangedNotificationSchema, () =>
+  client.sendRootsListChanged()
+);
 
 // Connect both transports in parallel
 const serverTransport = new StdioServerTransport();
